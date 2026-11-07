@@ -101,26 +101,34 @@ function sendMail(subject, html) {
 // ---------- 微信推送 (Server酱) ----------
 function serverChanSend(title, content) {
   return new Promise((resolve) => {
-    if (!SERVERCHAN_KEY) { log('[微信推送] 未配置 SERVERCHAN_KEY，跳过'); return resolve(false); }
-    const host = SERVERCHAN_KEY.indexOf('SCT') === 0 ? 'sctapi.ftqq.com' : 'sc.ftqq.com';
-    const body = 'title=' + encodeURIComponent(title) + '&desp=' + encodeURIComponent(content);
-    const req = https.request({
-      hostname: host, path: '/' + SERVERCHAN_KEY + '.send', method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
-      timeout: 30000,
-    }, (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        try {
-          const j = JSON.parse(data);
-          if (j.code === 0) { log('[微信推送] Server酱推送成功'); resolve(true); }
-          else { log('[微信推送] Server酱推送失败: ' + (j.message || data)); resolve(false); }
-        } catch (e) { log('[微信推送] 响应解析失败: ' + data.slice(0, 200)); resolve(false); }
+    try {
+      if (!/^[A-Za-z0-9]{10,}$/.test(SERVERCHAN_KEY)) {
+        log('[微信推送] SERVERCHAN_KEY 无效或未配置，跳过');
+        return resolve(false);
+      }
+      const host = SERVERCHAN_KEY.indexOf('SCT') === 0 ? 'sctapi.ftqq.com' : 'sc.ftqq.com';
+      const body = 'title=' + encodeURIComponent(title) + '&desp=' + encodeURIComponent(content);
+      const req = https.request({
+        hostname: host, path: '/' + SERVERCHAN_KEY + '.send', method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
+        timeout: 30000,
+      }, (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          try {
+            const j = JSON.parse(data);
+            if (j.code === 0) { log('[微信推送] Server酱推送成功'); resolve(true); }
+            else { log('[微信推送] Server酱推送失败: ' + (j.message || data)); resolve(false); }
+          } catch (e) { log('[微信推送] 响应解析失败: ' + data.slice(0, 200)); resolve(false); }
+        });
       });
-    });
-    req.on('error', (e) => { log('[微信推送] Server酱推送失败: ' + e.message); resolve(false); });
-    req.end(body);
+      req.on('error', (e) => { log('[微信推送] Server酱推送失败: ' + e.message); resolve(false); });
+      req.end(body);
+    } catch (e) {
+      log('[微信推送] 异常（已忽略，不影响监测）: ' + e.message);
+      resolve(false);
+    }
   });
 }
 
