@@ -1,0 +1,59 @@
+name: DMIT Stock Monitor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dmit-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Ensure Chrome
+        run: |
+          if [ -x /usr/bin/google-chrome ] || [ -x /usr/bin/google-chrome-stable ]; then
+            echo "chrome present"
+          else
+            sudo apt-get update -qq && sudo apt-get install -y -qq google-chrome-stable
+          fi
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Check stock
+        env:
+          QQ_AUTH_CODE: ${{ secrets.QQ_AUTH_CODE }}
+          QQ_FROM: ${{ secrets.QQ_FROM }}
+          QQ_TO: ${{ secrets.QQ_TO }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: node gh-monitor.js
+
+      - name: Persist state
+        if: always()
+        run: |
+          git config user.name "dmit-monitor-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add state.json
+          if git diff --cached --quiet; then
+            echo "state unchanged"
+          else
+            git commit -m "update state [skip ci]"
+            git push
+          fi
