@@ -1,7 +1,7 @@
 {
-  "lastStatus": null,
+  "lastStatus": "OUT_OF_STOCK",
   "lastAlertAt": 0,
-  "lastCheckAt": null,
-  "lastCheckStatus": null,
-  "lastCheckDetail": null
+  "lastCheckAt": 1794076853737,
+  "lastCheckStatus": "OUT_OF_STOCK",
+  "lastCheckDetail": "vpsmap: out_of_stock (Sold out (reference))"
 }
