@@ -17,7 +17,7 @@ const STATE_PATH = path.join(ROOT, 'state.json');
 const CART_URL = 'https://www.dmit.io/cart.php?a=add&pid=253';
 
 const QQ_AUTH_CODE = (process.env.QQ_AUTH_CODE || '').trim();
-const PUSHPLUS_TOKEN = (process.env.PUSHPLUS_TOKEN || '').trim();
+const SERVERCHAN_KEY = (process.env.SERVERCHAN_KEY || '').trim();
 const QQ_FROM = process.env.QQ_FROM || '2415564765@qq.com';
 const QQ_TO = process.env.QQ_TO || '2415564765@qq.com';
 const REMIND_MINUTES = Number(process.env.REMIND_MINUTES) || 15;
@@ -98,28 +98,29 @@ function sendMail(subject, html) {
   });
 }
 
-// ---------- 微信推送 ----------
-function pushPlusSend(title, content) {
+// ---------- 微信推送 (Server酱) ----------
+function serverChanSend(title, content) {
   return new Promise((resolve) => {
-    if (!PUSHPLUS_TOKEN) { log('[push] 未配置 token，跳过'); return resolve(false); }
-    const data = JSON.stringify({ token: PUSHPLUS_TOKEN, title, content, template: 'html' });
+    if (!SERVERCHAN_KEY) { log('[微信推送] 未配置 SERVERCHAN_KEY，跳过'); return resolve(false); }
+    const host = SERVERCHAN_KEY.indexOf('SCT') === 0 ? 'sctapi.ftqq.com' : 'sc.ftqq.com';
+    const body = 'title=' + encodeURIComponent(title) + '&desp=' + encodeURIComponent(content);
     const req = https.request({
-      hostname: 'www.pushplus.plus', path: '/send', method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+      hostname: host, path: '/' + SERVERCHAN_KEY + '.send', method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
       timeout: 30000,
     }, (res) => {
-      let body = '';
-      res.on('data', (c) => (body += c));
+      let data = '';
+      res.on('data', (c) => (data += c));
       res.on('end', () => {
         try {
-          const j = JSON.parse(body);
-          if (j.code === 200) { log('[push] 推送成功'); resolve(true); }
-          else { log('[push] 推送失败: ' + (j.msg || body)); resolve(false); }
-        } catch (e) { log('[push] 响应解析失败: ' + body.slice(0, 200)); resolve(false); }
+          const j = JSON.parse(data);
+          if (j.code === 0) { log('[微信推送] Server酱推送成功'); resolve(true); }
+          else { log('[微信推送] Server酱推送失败: ' + (j.message || data)); resolve(false); }
+        } catch (e) { log('[微信推送] 响应解析失败: ' + data.slice(0, 200)); resolve(false); }
       });
     });
-    req.on('error', (e) => { log('[push] 推送失败: ' + e.message); resolve(false); });
-    req.end(data);
+    req.on('error', (e) => { log('[微信推送] Server酱推送失败: ' + e.message); resolve(false); });
+    req.end(body);
   });
 }
 
@@ -159,7 +160,7 @@ const SOLD_OUT_HTML = [
       '<div style="font-family:微软雅黑;padding:20px;"><h3>✅ 云端监测测试邮件</h3>' +
       '<p>GitHub Actions 云端监测已正常运行，有货时会第一时间发邮件提醒你。</p></div>'
     );
-    const ok2 = await pushPlusSend(
+    const ok2 = await serverChanSend(
       '【测试推送】DMIT 云端监测已上线',
       '<div style="font-family:微软雅黑;padding:20px;"><h3>✅ 云端监测测试推送</h3><p>有货时你会像现在这样收到微信提醒。</p></div>'
     );
@@ -217,17 +218,17 @@ const SOLD_OUT_HTML = [
     if (state.lastStatus !== 'IN_STOCK') {
       log('！！！！！！检测到有货 ！！！！！！');
       await sendMail('【有货！】DMIT LAX.AS3.Pro.TINY 疑似上架，速购！', alertHtml(result.detail, checkedAt));
-      await pushPlusSend('【有货！】DMIT LAX.AS3.Pro.TINY 疑似上架，速购！', alertHtml(result.detail, checkedAt));
+      await serverChanSend('【有货！】DMIT LAX.AS3.Pro.TINY 疑似上架，速购！', alertHtml(result.detail, checkedAt));
       state.lastAlertAt = now;
     } else if (now - (state.lastAlertAt || 0) >= REMIND_MINUTES * 60000) {
       log('仍处于有货状态，再次提醒');
       await sendMail('【再次提醒】DMIT LAX.AS3.Pro.TINY 仍可购买', alertHtml(result.detail, checkedAt));
-      await pushPlusSend('【再次提醒】DMIT LAX.AS3.Pro.TINY 仍可购买', alertHtml(result.detail, checkedAt));
+      await serverChanSend('【再次提醒】DMIT LAX.AS3.Pro.TINY 仍可购买', alertHtml(result.detail, checkedAt));
       state.lastAlertAt = now;
     }
   } else if (result.status === 'OUT_OF_STOCK' && state.lastStatus === 'IN_STOCK') {
     await sendMail('【已售罄】DMIT LAX.AS3.Pro.TINY 恢复缺货', SOLD_OUT_HTML);
-    await pushPlusSend('【已售罄】DMIT LAX.AS3.Pro.TINY 恢复缺货', SOLD_OUT_HTML);
+    await serverChanSend('【已售罄】DMIT LAX.AS3.Pro.TINY 恢复缺货', SOLD_OUT_HTML);
   }
 
   if (result.status === 'IN_STOCK' || result.status === 'OUT_OF_STOCK') {
