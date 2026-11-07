@@ -25,14 +25,6 @@ jobs:
         with:
           node-version: 20
 
-      - name: Ensure Chrome
-        run: |
-          if [ -x /usr/bin/google-chrome ] || [ -x /usr/bin/google-chrome-stable ]; then
-            echo "chrome present"
-          else
-            sudo apt-get update -qq && sudo apt-get install -y -qq google-chrome-stable
-          fi
-
       - name: Install deps
         run: npm install --no-audit --no-fund
 
