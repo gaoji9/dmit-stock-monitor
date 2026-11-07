@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DMIT 补货监测</title>
+<style>
+body{font-family:system-ui,'Microsoft YaHei',sans-serif;background:#f5f6fa;display:flex;justify-content:center;padding:32px 8px;margin:0}
+.card{background:#fff;border-radius:14px;box-shadow:0 2px 12px rgba(0,0,0,.08);padding:24px;width:100%;max-width:520px}
+h1{font-size:20px;margin:0 0 10px}
+.sub{color:#666;font-size:14px;margin:0 0 16px}
+.badge{display:inline-block;padding:8px 18px;border-radius:22px;font-weight:700;font-size:16px}
+.in{background:#e8f8ef;color:#1a7f37}.out{background:#fdeaea;color:#c0392b}.unknown{background:#eef0f3;color:#666}
+.meta{color:#888;font-size:13px;margin-top:16px;line-height:1.9}
+.btn{display:inline-block;margin-top:14px;background:#2980b9;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;font-size:15px}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>📡 DMIT 补货监测</h1>
+  <p class="sub">目标：LAX.AS3.Pro.TINY（洛杉矶 · Premium · AS3）</p>
+  <p>当前状态：<span id="s" class="badge unknown">加载中…</span></p>
+  <div class="meta" id="m"></div>
+  <a class="btn" href="https://www.dmit.io/cart.php?a=add&pid=253" target="_blank" rel="noopener">👉 打开购买页面</a>
+</div>
+<script>
+var RAW = 'https://raw.githubusercontent.com/gaoji9/dmit-stock-monitor/main/state.json';
+function fmt(ts){ if(!ts) return '-'; try{ return new Date(ts).toLocaleString('zh-CN',{hour12:false}); }catch(e){ return ts; } }
+function load(){
+  fetch(RAW,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    var el=document.getElementById('s');
+    if(d.lastCheckStatus==='IN_STOCK'){ el.textContent='🟢 有货！快去下单！'; el.className='badge in'; }
+    else if(d.lastCheckStatus==='OUT_OF_STOCK'){ el.textContent='🔴 缺货'; el.className='badge out'; }
+    else if(d.lastCheckStatus==='UNKNOWN'){ el.textContent='⚠️ 检查异常'; el.className='badge unknown'; }
+    else { el.textContent='⚪ '+(d.lastCheckStatus||'未知'); el.className='badge unknown'; }
+    document.getElementById('m').innerHTML =
+      '最近检查时间：'+fmt(d.lastCheckAt)+
+      '<br>最近检查结果：'+(d.lastCheckDetail||'-')+
+      '<br>页面每 1 分钟自动刷新';
+  }).catch(function(){
+    document.getElementById('s').textContent='加载失败';
+  });
+}
+load();
+setInterval(load,60000);
+</script>
+</body>
+</html>
