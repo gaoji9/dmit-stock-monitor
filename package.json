@@ -1,0 +1,16 @@
+{
+  "name": "dmit-stock-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monitor DMIT LAX.AS3.Pro.TINY stock, alert via QQ mail + PushPlus",
+  "main": "gh-monitor.js",
+  "scripts": {
+    "start": "node gh-monitor.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.16",
+    "puppeteer-core": "^23.11.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}
