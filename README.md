@@ -1,7 +1,7 @@
 # DMIT 补货监测（GitHub Actions 版）
 
 监测 DMIT **LAX.AS3.Pro.TINY**（洛杉矶 / Premium / AS3）的库存，每 5 分钟自动检查一次。
-一旦有货，立刻发送 **邮件（QQ 邮箱）+ 微信推送（PushPlus）** 提醒。
+一旦有货，立刻发送 **邮件（QQ 邮箱）+ 微信推送（Server酱）** 提醒。
 
 ## 数据源
 
