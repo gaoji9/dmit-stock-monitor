@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      test_alert:
+        description: 'Send a test alert email/push (true to send)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write
@@ -29,12 +34,22 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Check stock
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.test_alert != 'true'
         env:
           QQ_AUTH_CODE: ${{ secrets.QQ_AUTH_CODE }}
           QQ_FROM: ${{ secrets.QQ_FROM }}
           QQ_TO: ${{ secrets.QQ_TO }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
         run: node gh-monitor.js
+
+      - name: Send test alert
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.test_alert == 'true'
+        env:
+          QQ_AUTH_CODE: ${{ secrets.QQ_AUTH_CODE }}
+          QQ_FROM: ${{ secrets.QQ_FROM }}
+          QQ_TO: ${{ secrets.QQ_TO }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: node gh-monitor.js --testmail
 
       - name: Persist state
         if: always()
