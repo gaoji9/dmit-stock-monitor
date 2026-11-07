@@ -152,6 +152,21 @@ const SOLD_OUT_HTML = [
 
 // ---------- 主流程 ----------
 (async () => {
+  // 测试提醒模式: node gh-monitor.js --testmail
+  if (process.argv[2] === '--testmail') {
+    const ok = await sendMail(
+      '【测试邮件】DMIT 云端监测已上线',
+      '<div style="font-family:微软雅黑;padding:20px;"><h3>✅ 云端监测测试邮件</h3>' +
+      '<p>GitHub Actions 云端监测已正常运行，有货时会第一时间发邮件提醒你。</p></div>'
+    );
+    const ok2 = await pushPlusSend(
+      '【测试推送】DMIT 云端监测已上线',
+      '<div style="font-family:微软雅黑;padding:20px;"><h3>✅ 云端监测测试推送</h3><p>有货时你会像现在这样收到微信提醒。</p></div>'
+    );
+    log((ok ? '测试邮件发送成功 ' : '测试邮件发送失败 ') + (ok2 ? '| 测试推送成功' : '| 推送未配置或失败'));
+    process.exit(ok ? 0 : 2);
+  }
+
   const state = loadState();
 
   // 1) vpsmap
