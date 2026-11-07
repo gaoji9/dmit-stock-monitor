@@ -1,13 +1,14 @@
 /*
- * DMIT 补货监测 - GitHub Actions 版
- * 每 5 分钟运行一次（由 .github/workflows/monitor.yml 调度）
- * 判断标准同电脑版：购物车页面显示 Out of Stock = 缺货；跳转 confproduct = 有货
+ * DMIT 补货监测 - GitHub Actions 版（数据源: vpsmap 主 + vpsme 备）
+ *
+ * 直接访问 DMIT 官网会被 Cloudflare 拦截（GitHub 机房 IP 无法通过人机验证），
+ * 因此改用第三方库存追踪站（它们持续轮询 DMIT 官方购物车，约 10-15 分钟刷新一次）：
+ *   1) vpsmap.net   - 结构化字段 data-stock-status，带检查时间戳
+ *   2) vpsme.de     - 简单徽章 有货/缺货
+ * 有货时立刻发送邮件（QQ）+ 微信推送（PushPlus）。
  */
 const fs = require('fs');
 const path = require('path');
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteer.use(StealthPlugin());
 const nodemailer = require('nodemailer');
 const https = require('https');
 
@@ -21,13 +22,9 @@ const QQ_FROM = process.env.QQ_FROM || '2415564765@qq.com';
 const QQ_TO = process.env.QQ_TO || '2415564765@qq.com';
 const REMIND_MINUTES = Number(process.env.REMIND_MINUTES) || 15;
 
-const CHROME_CANDIDATES = [
-  '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable',
-  '/opt/google/chrome/chrome',
-  '/usr/bin/chromium',
-  '/usr/bin/chromium-browser',
-];
+const VPSMAP_URL = 'https://vpsmap.net/en/providers/dmit/locations/lax-pro/';
+const VPSME_URL = 'https://www.vpsme.de/g/155';
+const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 function log(msg) {
   console.log('[' + new Date().toISOString() + '] ' + msg);
@@ -41,9 +38,48 @@ function saveState(s) {
   fs.writeFileSync(STATE_PATH, JSON.stringify(s, null, 2) + '\n');
 }
 
-function findChrome() {
-  for (const p of CHROME_CANDIDATES) if (fs.existsSync(p)) return p;
-  return null;
+async function httpGet(url, timeoutMs) {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(timeoutMs || 30000),
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.text();
+}
+
+// ---------- 数据源1: vpsmap ----------
+// 返回 { status: 'IN_STOCK'|'OUT_OF_STOCK'|null, detail: string, successAt: string|null }
+function parseVpsmap(html) {
+  const anchor = 'lax-as3-pro-tiny-253';
+  const idx = html.indexOf(anchor);
+  if (idx === -1) return { status: null, detail: 'vpsmap: 未找到 TINY 行', successAt: null };
+  const rowEnd = html.indexOf('</tr>', idx);
+  const slice = html.slice(idx, rowEnd === -1 ? undefined : rowEnd);
+  const statusM = slice.match(/data-stock-status="([^"]+)"/);
+  const successM = slice.match(/data-success="([^"]+)"/);
+  const textM = slice.match(/<span class="badge[^"]*"[^>]*>([^<]+)<\/span>/);
+  const raw = statusM ? statusM[1] : null;
+  if (raw === 'in_stock') {
+    return { status: 'IN_STOCK', detail: 'vpsmap: in_stock (' + (textM ? textM[1].trim() : '') + ')', successAt: successM ? successM[1] : null };
+  }
+  if (raw === 'out_of_stock') {
+    return { status: 'OUT_OF_STOCK', detail: 'vpsmap: out_of_stock (' + (textM ? textM[1].trim() : '') + ')', successAt: successM ? successM[1] : null };
+  }
+  return { status: null, detail: 'vpsmap: 状态未知 (' + (raw || 'no-field') + ')', successAt: successM ? successM[1] : null };
+}
+
+// ---------- 数据源2: vpsme ----------
+function parseVpsme(html) {
+  const idx = html.indexOf('LAX.AS3.Pro.TINY');
+  if (idx === -1) return { status: null, detail: 'vpsme: 未找到 TINY 卡片' };
+  const slice = html.slice(idx, idx + 2500);
+  const badge = slice.match(/badge badge-(in|out)"[^>]*>([^<]+)</);
+  if (!badge) return { status: null, detail: 'vpsme: 未找到徽章' };
+  const kind = badge[1];
+  const text = badge[2].trim();
+  if (kind === 'in') return { status: 'IN_STOCK', detail: 'vpsme: ' + text };
+  if (kind === 'out') return { status: 'OUT_OF_STOCK', detail: 'vpsme: ' + text };
+  return { status: null, detail: 'vpsme: 未知 (' + text + ')' };
 }
 
 // ---------- 邮件 ----------
@@ -87,106 +123,74 @@ function pushPlusSend(title, content) {
   });
 }
 
-const ALERT_HTML = [
-  '<div style="font-family:微软雅黑,Arial,sans-serif;max-width:560px;margin:0 auto;padding:20px;border:2px solid #e74c3c;border-radius:10px;">',
-  '<h2 style="color:#e74c3c;margin-top:0;">🎉 DMIT LAX.AS3.Pro.TINY 有货了！</h2>',
-  '<p style="font-size:15px;">你关注的 VPS 刚刚检测到 <b>可以下单</b>：</p>',
-  '<ul style="font-size:14px;">',
-  '<li>产品：LAX.AS3.Pro.TINY</li>',
-  '<li>机房：Los Angeles / Premium / AS3</li>',
-  '<li>配置：1 核 / 2GB / 20GB SSD / 1TB流量 / 1Gbps</li>',
-  '<li>价格：$10.90/月</li>',
-  '</ul>',
-  '<p style="font-size:15px;"><b>请立刻点击下面的按钮去下单（手慢无！）：</b></p>',
-  '<p><a href="' + CART_URL + '" style="display:inline-block;background:#e74c3c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-size:16px;">立即购买</a></p>',
-  '<p style="font-size:13px;color:#888;">此邮件由 GitHub Actions 云端监测自动发送。</p>',
-  '</div>',
-].join('');
+function alertHtml(sourceDetail, checkedAt) {
+  return [
+    '<div style="font-family:微软雅黑,Arial,sans-serif;max-width:560px;margin:0 auto;padding:20px;border:2px solid #e74c3c;border-radius:10px;">',
+    '<h2 style="color:#e74c3c;margin-top:0;">🎉 DMIT LAX.AS3.Pro.TINY 可能补货了！</h2>',
+    '<p style="font-size:15px;">云端监测发现该套餐状态变为 <b>有货</b>：</p>',
+    '<ul style="font-size:14px;">',
+    '<li>产品：LAX.AS3.Pro.TINY</li>',
+    '<li>机房：Los Angeles / Premium / AS3</li>',
+    '<li>配置：1 核 / 2GB / 20GB SSD / 1TB流量 / 1Gbps</li>',
+    '<li>价格：$10.90/月</li>',
+    '<li>数据来源：' + (sourceDetail || '-') + '</li>',
+    '<li>数据时间：' + (checkedAt || '-') + '</li>',
+    '</ul>',
+    '<p style="font-size:15px;"><b>立刻点下面按钮去 DMIT 官网下单核实（以官网为准，手慢无！）：</b></p>',
+    '<p><a href="' + CART_URL + '" style="display:inline-block;background:#e74c3c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-size:16px;">立即购买</a></p>',
+    '<p style="font-size:12px;color:#999;">说明：云端监测通过第三方库存站获取数据（约10-15分钟延迟），最终以 DMIT 官网购物车为准。</p>',
+    '</div>',
+  ].join('');
+}
 
 const SOLD_OUT_HTML = [
   '<div style="font-family:微软雅黑,Arial,sans-serif;max-width:560px;margin:0 auto;padding:20px;border:1px solid #ccc;border-radius:10px;">',
   '<h2 style="margin-top:0;color:#555;">😢 又卖完了</h2>',
-  '<p style="font-size:15px;">LAX.AS3.Pro.TINY 刚刚恢复为缺货状态。云端监测继续运行中，下次有货会再次提醒。</p>',
+  '<p style="font-size:15px;">LAX.AS3.Pro.TINY 状态恢复为缺货。云端监测继续运行中，下次有货会再次提醒。</p>',
   '</div>',
 ].join('');
-
-// ---------- 库存检查 ----------
-async function checkStock(browser) {
-  const page = await browser.newPage();
-  try {
-    await page.setViewport({ width: 1280, height: 800 });
-    let gotoErr = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        await page.goto(CART_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        gotoErr = null;
-        break;
-      } catch (e) { gotoErr = e; }
-    }
-    if (gotoErr) return { status: 'ERROR', detail: '页面访问失败: ' + gotoErr.message };
-
-    const deadline = Date.now() + 90000;
-    while (Date.now() < deadline) {
-      let info;
-      try {
-        info = await page.evaluate(() => ({
-          url: location.href,
-          title: document.title,
-          text: (document.body ? document.body.innerText : '').slice(0, 5000),
-        }));
-      } catch (e) { info = { url: '', title: '', text: '' }; }
-
-      if (info.url.indexOf('confproduct') !== -1) {
-        return { status: 'IN_STOCK', detail: '购物车进入配置页面 -> 有货！' };
-      }
-      const t = info.text.toLowerCase();
-      if (t.indexOf('out of stock on this item') !== -1) {
-        return { status: 'OUT_OF_STOCK', detail: '购物车显示 Out of Stock' };
-      }
-      if (
-        (info.title || '').toLowerCase().indexOf('just a moment') !== -1 ||
-        (info.title || '').indexOf('请稍候') !== -1 ||
-        t.indexOf('enable javascript and cookies') !== -1 ||
-        t.indexOf('checking your browser') !== -1 ||
-        t.indexOf('安全验证') !== -1 ||
-        t.indexOf('ray id') !== -1
-      ) {
-        await new Promise((r) => setTimeout(r, 3000));
-        continue;
-      }
-      if (t.indexOf('shopping cart') !== -1 || t.indexOf('client area') !== -1) {
-        await new Promise((r) => setTimeout(r, 2000));
-        continue;
-      }
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-    return { status: 'UNKNOWN', detail: '90 秒内未能判定（疑似人机验证未通过）' };
-  } finally {
-    await page.close().catch(() => {});
-  }
-}
 
 // ---------- 主流程 ----------
 (async () => {
   const state = loadState();
-  const chromePath = findChrome();
-  if (!chromePath) { log('未找到 Chrome，无法检查'); process.exit(2); }
-  log('使用浏览器: ' + chromePath);
 
-  let result;
+  // 1) vpsmap
+  let mapRes = null;
   try {
-    const browser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--mute-audio'],
-    });
-    result = await checkStock(browser);
-    await browser.close().catch(() => {});
+    const html = await httpGet(VPSMAP_URL, 40000);
+    mapRes = parseVpsmap(html);
+    log('vpsmap: ' + mapRes.detail + (mapRes.successAt ? ' (successAt=' + mapRes.successAt + ')' : ''));
   } catch (e) {
-    result = { status: 'ERROR', detail: '浏览器异常: ' + e.message };
+    mapRes = { status: null, detail: 'vpsmap: 抓取失败 ' + e.message };
+    log(mapRes.detail);
   }
 
-  log('本次检查: ' + result.status + ' - ' + result.detail);
+  // 2) vpsme（无论 vpsmap 结果如何都抓，用于交叉印证）
+  let meRes = null;
+  try {
+    const html = await httpGet(VPSME_URL, 40000);
+    meRes = parseVpsme(html);
+    log('vpsme: ' + meRes.detail);
+  } catch (e) {
+    meRes = { status: null, detail: 'vpsme: 抓取失败 ' + e.message };
+    log(meRes.detail);
+  }
+
+  // 3) 判定：vpsmap 优先；vpsmap 失败时用 vpsme
+  let result;
+  if (mapRes.status) {
+    result = mapRes;
+  } else if (meRes.status) {
+    result = meRes;
+    result.detail = '（vpsmap不可用，用vpsme）' + meRes.detail;
+  } else {
+    result = { status: 'UNKNOWN', detail: mapRes.detail + ' | ' + meRes.detail };
+  }
+  // 交叉印证提示
+  if (mapRes.status === 'IN_STOCK' && meRes.status === 'OUT_OF_STOCK') {
+    result.detail += ' 【注意: vpsmap有货但vpsme仍显示缺货，可能刚补货，请以官网为准】';
+  }
+  log('判定: ' + result.status + ' - ' + result.detail);
 
   state.lastCheckAt = Date.now();
   state.lastCheckStatus = result.status;
@@ -194,15 +198,16 @@ async function checkStock(browser) {
 
   if (result.status === 'IN_STOCK') {
     const now = Date.now();
+    const checkedAt = mapRes && mapRes.successAt ? mapRes.successAt.replace('T', ' ').replace('.000Z', ' UTC') : new Date().toISOString();
     if (state.lastStatus !== 'IN_STOCK') {
       log('！！！！！！检测到有货 ！！！！！！');
-      await sendMail('【有货！】DMIT LAX.AS3.Pro.TINY 已上架，速购！', ALERT_HTML);
-      await pushPlusSend('【有货！】DMIT LAX.AS3.Pro.TINY 已上架，速购！', ALERT_HTML);
+      await sendMail('【有货！】DMIT LAX.AS3.Pro.TINY 疑似上架，速购！', alertHtml(result.detail, checkedAt));
+      await pushPlusSend('【有货！】DMIT LAX.AS3.Pro.TINY 疑似上架，速购！', alertHtml(result.detail, checkedAt));
       state.lastAlertAt = now;
     } else if (now - (state.lastAlertAt || 0) >= REMIND_MINUTES * 60000) {
       log('仍处于有货状态，再次提醒');
-      await sendMail('【再次提醒】DMIT LAX.AS3.Pro.TINY 仍可购买', ALERT_HTML);
-      await pushPlusSend('【再次提醒】DMIT LAX.AS3.Pro.TINY 仍可购买', ALERT_HTML);
+      await sendMail('【再次提醒】DMIT LAX.AS3.Pro.TINY 仍可购买', alertHtml(result.detail, checkedAt));
+      await pushPlusSend('【再次提醒】DMIT LAX.AS3.Pro.TINY 仍可购买', alertHtml(result.detail, checkedAt));
       state.lastAlertAt = now;
     }
   } else if (result.status === 'OUT_OF_STOCK' && state.lastStatus === 'IN_STOCK') {
@@ -215,8 +220,7 @@ async function checkStock(browser) {
   }
   saveState(state);
 
-  if (result.status === 'ERROR' || result.status === 'UNKNOWN') process.exit(2);
-  process.exit(0);
+  process.exit(result.status === 'UNKNOWN' ? 2 : 0);
 })().catch((e) => {
   log('异常: ' + (e && e.stack || e));
   process.exit(2);
