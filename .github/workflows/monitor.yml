@@ -39,7 +39,7 @@ jobs:
           QQ_AUTH_CODE: ${{ secrets.QQ_AUTH_CODE }}
           QQ_FROM: ${{ secrets.QQ_FROM }}
           QQ_TO: ${{ secrets.QQ_TO }}
-          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
         run: node gh-monitor.js
 
       - name: Send test alert
@@ -48,7 +48,7 @@ jobs:
           QQ_AUTH_CODE: ${{ secrets.QQ_AUTH_CODE }}
           QQ_FROM: ${{ secrets.QQ_FROM }}
           QQ_TO: ${{ secrets.QQ_TO }}
-          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
         run: node gh-monitor.js --testmail
 
       - name: Persist state
