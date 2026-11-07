@@ -1,7 +1,7 @@
 {
   "lastStatus": null,
   "lastAlertAt": 0,
-  "lastCheckAt": 1794073291683,
-  "lastCheckStatus": "UNKNOWN",
-  "lastCheckDetail": "90 秒内未能判定（疑似人机验证未通过）"
+  "lastCheckAt": null,
+  "lastCheckStatus": null,
+  "lastCheckDetail": null
 }
