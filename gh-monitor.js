@@ -178,15 +178,19 @@ const SOLD_OUT_HTML = [
 
   const state = loadState();
 
-  // 1) vpsmap
+  // 1) vpsmap（失败自动重试 3 次）
   let mapRes = null;
-  try {
-    const html = await httpGet(VPSMAP_URL, 40000);
-    mapRes = parseVpsmap(html);
-    log('vpsmap: ' + mapRes.detail + (mapRes.successAt ? ' (successAt=' + mapRes.successAt + ')' : ''));
-  } catch (e) {
-    mapRes = { status: null, detail: 'vpsmap: 抓取失败 ' + e.message };
-    log(mapRes.detail);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const html = await httpGet(VPSMAP_URL, 40000);
+      mapRes = parseVpsmap(html);
+      log('vpsmap: ' + mapRes.detail + (mapRes.successAt ? ' (successAt=' + mapRes.successAt + ')' : ''));
+      break;
+    } catch (e) {
+      mapRes = { status: null, detail: 'vpsmap: 抓取失败(第' + attempt + '次) ' + e.message };
+      log(mapRes.detail);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 8000));
+    }
   }
 
   // 2) vpsme（无论 vpsmap 结果如何都抓，用于交叉印证）
@@ -244,8 +248,11 @@ const SOLD_OUT_HTML = [
   }
   saveState(state);
 
-  process.exit(result.status === 'UNKNOWN' ? 2 : 0);
+  // 注意：无论结果如何都正常退出（exit 0）。
+  // 之前 UNKNOWN 会 exit 2 导致 GitHub 判定"运行失败"并给仓库主人发邮件，
+  // 现在失败/异常只记录在 state.json（状态页可见"检查异常"），不再打扰邮箱。
+  process.exit(0);
 })().catch((e) => {
   log('异常: ' + (e && e.stack || e));
-  process.exit(2);
+  process.exit(0);
 });
