@@ -3,6 +3,7 @@ name: DMIT Stock Monitor
 on:
   schedule:
     - cron: '*/5 * * * *'
+    - cron: '2-59/5 * * * *'
   workflow_dispatch:
     inputs:
       test_alert:
