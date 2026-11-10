@@ -32,7 +32,7 @@ function log(msg) {
 
 function loadState() {
   try { return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); }
-  catch (e) { return { lastStatus: null, lastAlertAt: 0 }; }
+  catch (e) { return { lastStatus: null, lastAlertAt: 0, consecutiveFailures: 0, lastFailureAlertAt: 0, lastValidCheckAt: null }; }
 }
 function saveState(s) {
   fs.writeFileSync(STATE_PATH, JSON.stringify(s, null, 2) + '\n');
@@ -220,9 +220,35 @@ const SOLD_OUT_HTML = [
   }
   log('判定: ' + result.status + ' - ' + result.detail);
 
-  state.lastCheckAt = Date.now();
+  const now = Date.now();
+  state.lastCheckAt = now;
   state.lastCheckStatus = result.status;
   state.lastCheckDetail = result.detail;
+
+  // ---- 看门狗：记录连续失败与最近成功时间 ----
+  if (result.status === 'IN_STOCK' || result.status === 'OUT_OF_STOCK') {
+    state.consecutiveFailures = 0;
+    state.lastValidCheckAt = now;
+  } else {
+    state.consecutiveFailures = (state.consecutiveFailures || 0) + 1;
+  }
+  const staleMs = state.lastValidCheckAt ? (now - state.lastValidCheckAt) : 0;
+  const needAlert = (state.consecutiveFailures >= 3) || (state.lastValidCheckAt && staleMs > 45 * 60000);
+  if (needAlert && now - (state.lastFailureAlertAt || 0) > 2 * 3600000) {
+    log('【看门狗】监测持续异常，发送告警');
+    const wdHtml = [
+      '<div style="font-family:微软雅黑,Arial,sans-serif;max-width:560px;margin:0 auto;padding:20px;border:1px solid #e67e22;border-radius:10px;">',
+      '<h2 style="margin-top:0;color:#e67e22;">⚠️ 云端监测持续异常</h2>',
+      '<p style="font-size:15px;">云端已连续 ' + state.consecutiveFailures + ' 次无法获取有效库存数据：</p>',
+      '<p style="font-size:13px;color:#666;">' + result.detail + '</p>',
+      '<p style="font-size:14px;">请检查状态页确认：<a href="https://gaoji9.github.io/dmit-stock-monitor/status/">打开状态页</a>（页面显示"检查异常"时需排查）。</p>',
+      '<p style="font-size:14px;"><b>提醒：</b>若你在电脑旁，请同时运行电脑端 start.bat 作为备份监测。</p>',
+      '</div>',
+    ].join('');
+    await sendMail('【监测异常】云端持续无法获取库存数据', wdHtml);
+    await serverChanSend('【监测异常】云端持续无法获取库存数据', wdHtml);
+    state.lastFailureAlertAt = now;
+  }
 
   if (result.status === 'IN_STOCK') {
     const now = Date.now();
