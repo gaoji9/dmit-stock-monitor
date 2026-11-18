@@ -193,15 +193,19 @@ const SOLD_OUT_HTML = [
     }
   }
 
-  // 2) vpsme（无论 vpsmap 结果如何都抓，用于交叉印证）
+  // 2) vpsme（无论 vpsmap 结果如何都抓，用于交叉印证；失败重试 3 次）
   let meRes = null;
-  try {
-    const html = await httpGet(VPSME_URL, 40000);
-    meRes = parseVpsme(html);
-    log('vpsme: ' + meRes.detail);
-  } catch (e) {
-    meRes = { status: null, detail: 'vpsme: 抓取失败 ' + e.message };
-    log(meRes.detail);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const html = await httpGet(VPSME_URL, 40000);
+      meRes = parseVpsme(html);
+      log('vpsme: ' + meRes.detail);
+      break;
+    } catch (e) {
+      meRes = { status: null, detail: 'vpsme: 抓取失败(第' + attempt + '次) ' + e.message };
+      log(meRes.detail);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 8000));
+    }
   }
 
   // 3) 判定：vpsmap 优先；vpsmap 失败时用 vpsme
@@ -233,8 +237,10 @@ const SOLD_OUT_HTML = [
     state.consecutiveFailures = (state.consecutiveFailures || 0) + 1;
   }
   const staleMs = state.lastValidCheckAt ? (now - state.lastValidCheckAt) : 0;
-  const needAlert = (state.consecutiveFailures >= 3) || (state.lastValidCheckAt && staleMs > 45 * 60000);
-  if (needAlert && now - (state.lastFailureAlertAt || 0) > 2 * 3600000) {
+  // 告警门槛：连续失败 12 次（约1小时）或 90 分钟无有效检查，避免数据源
+  // 短暂抖动就发告警邮件打扰；冷却 4 小时。
+  const needAlert = (state.consecutiveFailures >= 12) || (state.lastValidCheckAt && staleMs > 90 * 60000);
+  if (needAlert && now - (state.lastFailureAlertAt || 0) > 4 * 3600000) {
     log('【看门狗】监测持续异常，发送告警');
     const wdHtml = [
       '<div style="font-family:微软雅黑,Arial,sans-serif;max-width:560px;margin:0 auto;padding:20px;border:1px solid #e67e22;border-radius:10px;">',
