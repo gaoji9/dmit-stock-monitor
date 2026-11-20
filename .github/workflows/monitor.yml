@@ -62,7 +62,10 @@ jobs:
           # 导致 push 被拒（fetch first）；无论最终 push 成败都不让任务报失败，
           # 防止 GitHub 向仓库主人发送失败邮件（下次运行会自动补交状态）。
           git pull --rebase origin main || echo "pull failed, continue"
-          git add state.json
+          # 同步 state.json 到 status/ 目录（GitHub Pages 同源托管），
+          # 状态页直接读相对路径，避免依赖 raw.githubusercontent.com（国内常被墙）
+          cp state.json status/state.json
+          git add state.json status/state.json
           if git diff --cached --quiet; then
             echo "state unchanged"
           else

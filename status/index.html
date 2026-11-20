@@ -24,7 +24,7 @@ h1{font-size:20px;margin:0 0 10px}
   <a class="btn" href="https://www.dmit.io/cart.php?a=add&pid=253" target="_blank" rel="noopener">👉 打开购买页面</a>
 </div>
 <script>
-var RAW = 'https://raw.githubusercontent.com/gaoji9/dmit-stock-monitor/main/state.json';
+var RAW = 'state.json';
 function fmt(ts){ if(!ts) return '-'; try{ return new Date(ts).toLocaleString('zh-CN',{hour12:false}); }catch(e){ return ts; } }
 function load(){
   fetch(RAW,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
