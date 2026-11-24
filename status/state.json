@@ -1,10 +1,10 @@
 {
   "lastStatus": "OUT_OF_STOCK",
   "lastAlertAt": 0,
-  "lastCheckAt": 1795495099603,
-  "lastCheckStatus": "OUT_OF_STOCK",
-  "lastCheckDetail": "vpsmap: out_of_stock (Sold out (reference))",
-  "consecutiveFailures": 0,
+  "lastCheckAt": 1795498581878,
+  "lastCheckStatus": "UNKNOWN",
+  "lastCheckDetail": "vpsmap: 抓取失败(第3次) HTTP 502 | vpsme: 抓取失败(第3次) HTTP 403",
+  "consecutiveFailures": 1,
   "lastValidCheckAt": 1795495099603,
   "lastFailureAlertAt": 1795321368833
 }
