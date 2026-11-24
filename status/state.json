@@ -1,10 +1,10 @@
 {
   "lastStatus": "OUT_OF_STOCK",
   "lastAlertAt": 0,
-  "lastCheckAt": 1795541955293,
-  "lastCheckStatus": "UNKNOWN",
-  "lastCheckDetail": "vpsmap: 抓取失败(第3次) The operation was aborted due to timeout | vpsme: 抓取失败(第3次) HTTP 403",
-  "consecutiveFailures": 13,
-  "lastValidCheckAt": 1795495099603,
+  "lastCheckAt": 1795544831754,
+  "lastCheckStatus": "OUT_OF_STOCK",
+  "lastCheckDetail": "vpsmap: out_of_stock (Sold out (reference))",
+  "consecutiveFailures": 0,
+  "lastValidCheckAt": 1795544831754,
   "lastFailureAlertAt": 1795531695540
 }
