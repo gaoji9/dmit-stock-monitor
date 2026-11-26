@@ -1,10 +1,10 @@
 {
   "lastStatus": "OUT_OF_STOCK",
   "lastAlertAt": 0,
-  "lastCheckAt": 1795724741230,
+  "lastCheckAt": 1795727923164,
   "lastCheckStatus": "OUT_OF_STOCK",
   "lastCheckDetail": "vpsmap: out_of_stock (Sold out (reference))",
   "consecutiveFailures": 0,
-  "lastValidCheckAt": 1795724741230,
+  "lastValidCheckAt": 1795727923164,
   "lastFailureAlertAt": 1795531695540
 }
